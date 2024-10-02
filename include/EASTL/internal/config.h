@@ -1496,8 +1496,11 @@ namespace eastl
 typedef EASTL_SIZE_T  eastl_size_t;  // Same concept as std::size_t.
 typedef EASTL_SSIZE_T eastl_ssize_t; // Signed version of eastl_size_t. Concept is similar to Posix's ssize_t.
 
-
-
+namespace eastl
+{
+	using size_t  = eastl_size_t;
+	using ssize_t = eastl_ssize_t;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // EASTL_ALLOCATOR_EXPLICIT_ENABLED

@@ -66,7 +66,7 @@ namespace eastl
 	template <class T>
 	inline in_place_tag in_place(Internal::in_place_type_tag<T>) { return Internal_ConstructInPlaceTag(); }
 
-	template <std::size_t I>
+	template <eastl::size_t I>
 	inline in_place_tag in_place(Internal::in_place_index_tag<I>) { return Internal_ConstructInPlaceTag(); }
 
 

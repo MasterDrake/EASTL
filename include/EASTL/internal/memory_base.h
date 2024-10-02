@@ -8,7 +8,8 @@
 #include <EASTL/internal/config.h>
 
 #if defined(EA_PRAGMA_ONCE_SUPPORTED)
-	#pragma once // Some compilers (e.g. VC++) benefit significantly from using this. We've measured 3-4% build speed improvements in apps as a result.
+#pragma once // Some compilers (e.g. VC++) benefit significantly from using this. We've measured 3-4% build speed
+             // improvements in apps as a result.
 #endif
 
 
@@ -23,15 +24,21 @@ namespace eastl
 	/// addressof
 	///
 	/// From the C++11 Standard, section 20.6.12.1
-	/// Returns the actual address of the object or function referenced by r, even in the presence of an overloaded operator&.
+	/// Returns the actual address of the object or function referenced by r, even in the presence of an overloaded
+	/// operator&.
 	///
-	template<typename T>
-	T* addressof(T& value) EA_NOEXCEPT
+	template <typename T>
+	constexpr T* addressof(T& value) EA_NOEXCEPT
 	{
-		return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(value)));
+		if constexpr (true)
+			return __builtin_addressof(value);
+		else
+			return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(value)));
 	}
+
+	template <typename T>
+	const T* addressof(const T&& value) = delete;
 
 } // namespace eastl
 
 #endif // EASTL_INTERNAL_MEMORY_BASE_H
-

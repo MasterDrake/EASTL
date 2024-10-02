@@ -48,3 +48,4 @@ Testing/*
 .buckconfig.local
 BUCKAROO_DEPS
 .vscode/settings.json
+out

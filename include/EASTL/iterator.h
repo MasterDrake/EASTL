@@ -407,10 +407,11 @@ EASTL_INTERNAL_RESTORE_DEPRECATED()
 
 
 	template <typename Iterator1, typename Iterator2>
-	EA_CPP14_CONSTEXPR inline typename reverse_iterator<Iterator1>::difference_type
-	operator-(const reverse_iterator<Iterator1>& a, const reverse_iterator<Iterator2>& b)
-		{ return b.base() - a.base(); }
-
+	EA_CPP14_CONSTEXPR inline auto 
+	operator-(const reverse_iterator<Iterator1>& a, const reverse_iterator<Iterator2>& b) -> decltype(a.base() - b.base())
+	{
+		 return b.base() - a.base();
+	}
 
 	template <typename Iterator>
 	EA_CPP14_CONSTEXPR inline reverse_iterator<Iterator>

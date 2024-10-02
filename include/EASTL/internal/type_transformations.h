@@ -659,7 +659,7 @@ namespace eastl
 	// The member typedef type shall be a POD type suitable for use as
 	// uninitialized storage for any object whose type is listed in Types; 
 	// its size shall be at least Len. The static member alignment_value 
-	// shall be an integral constant of type std::size_t whose value is 
+	// shall be an integral constant of type eastl::size_t whose value is 
 	// the strictest alignment of all types listed in Types.
 	// Note that the resulting type is not a C/C++ union, but simply memory 
 	// block (of pod type) that can be used to placement-new an actual 

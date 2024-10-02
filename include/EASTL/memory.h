@@ -611,7 +611,8 @@ namespace eastl
 				typedef typename eastl::iterator_traits<ForwardIterator>::value_type value_type;
 
 				for (; first != last; ++first, ++dest)
-					memmove(eastl::addressof(*dest), eastl::addressof(*first), sizeof(value_type));
+					//HACKHACKHACKmemmove(eastl::addressof(*dest), eastl::addressof(*first), sizeof(value_type));
+					*dest = *first;
 
 				return dest;
 			}
