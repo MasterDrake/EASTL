@@ -253,6 +253,12 @@
 #include <EASTL/random.h>
 #include <EASTL/compare.h>
 
+#include <EARanges/functional/identity.hpp>
+#include <EARanges/functional/invoke.hpp>
+
+#include <EARanges/iterator/traits.hpp>
+#include <EARanges/algorithm/result_types.hpp>
+
 EA_DISABLE_ALL_VC_WARNINGS();
 
 	#if defined(EA_COMPILER_MSVC) && (defined(EA_PROCESSOR_X86) || defined(EA_PROCESSOR_X86_64))
@@ -266,6 +272,17 @@ EA_RESTORE_ALL_VC_WARNINGS();
 
 #if defined(EA_PRAGMA_ONCE_SUPPORTED)
 	#pragma once // Some compilers (e.g. VC++) benefit significantly from using this. We've measured 3-4% build speed improvements in apps as a result.
+
+	//HACKHACKHACK:Including this is bad for some unknow reason
+	//#include <EARanges/iterator/operations.hpp>
+	namespace ranges
+	{
+		struct next;
+	    struct uncounted;
+	    struct recounted;
+	    //TODO: do we gain something by forwarding? struct identity;
+	    //TODO: do we gain something by forwarding? struct less;
+	}
 #endif
 
 
@@ -292,38 +309,7 @@ EA_RESTORE_ALL_VC_WARNINGS();
 
 namespace eastl
 {
-	/// min_element
-	///
-	/// min_element finds the smallest element in the range [first, last).
-	/// It returns the first iterator i in [first, last) such that no other
-	/// iterator in [first, last) points to a value smaller than *i.
-	/// The return value is last if and only if [first, last) is an empty range.
-	///
-	/// Returns: The first iterator i in the range [first, last) such that
-	/// for any iterator j in the range [first, last) the following corresponding
-	/// condition holds: !(*j < *i).
-	///
-	/// Complexity: Exactly 'max((last - first) - 1, 0)' applications of the
-	/// corresponding comparisons.
-	///
-	template <typename ForwardIterator>
-	ForwardIterator min_element(ForwardIterator first, ForwardIterator last)
-	{
-		if(first != last)
-		{
-			ForwardIterator currentMin = first;
-
-			while(++first != last)
-			{
-				if(*first < *currentMin)
-					currentMin = first;
-			}
-			return currentMin;
-		}
-		return first;
-	}
-
-
+	
 	/// min_element
 	///
 	/// min_element finds the smallest element in the range [first, last).
@@ -338,52 +324,13 @@ namespace eastl
 	/// Complexity: Exactly 'max((last - first) - 1, 0)' applications of the
 	/// corresponding comparisons.
 	///
-	template <typename ForwardIterator, typename Compare>
-	ForwardIterator min_element(ForwardIterator first, ForwardIterator last, Compare compare)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Compare = ranges::less, typename Projection = ranges::identity>
+	EA_CONSTEXPR ForwardIterator min_element(ForwardIterator first, ForwardSentinel last, Compare compare = {}, Projection proj = {})
 	{
-		if(first != last)
-		{
-			ForwardIterator currentMin = first;
-
-			while(++first != last)
-			{
-				if(compare(*first, *currentMin))
-					currentMin = first;
-			}
-			return currentMin;
-		}
-		return first;
-	}
-
-
-	/// max_element
-	///
-	/// max_element finds the largest element in the range [first, last).
-	/// It returns the first iterator i in [first, last) such that no other
-	/// iterator in [first, last) points to a value greater than *i.
-	/// The return value is last if and only if [first, last) is an empty range.
-	///
-	/// Returns: The first iterator i in the range [first, last) such that
-	/// for any iterator j in the range [first, last) the following corresponding
-	/// condition holds: !(*i < *j).
-	///
-	/// Complexity: Exactly 'max((last - first) - 1, 0)' applications of the
-	/// corresponding comparisons.
-	///
-	template <typename ForwardIterator>
-	ForwardIterator max_element(ForwardIterator first, ForwardIterator last)
-	{
-		if(first != last)
-		{
-			ForwardIterator currentMax = first;
-
-			while(++first != last)
-			{
-				if(*currentMax < *first)
-					currentMax = first;
-			}
-			return currentMax;
-		}
+		if (first != last)
+			for (auto tmp = ranges::next(first); tmp != last; ++tmp)
+				if (ranges::invoke(compare, ranges::invoke(proj, *tmp), ranges::invoke(proj, *first)))
+					first = tmp;
 		return first;
 	}
 
@@ -402,20 +349,13 @@ namespace eastl
 	/// Complexity: Exactly 'max((last - first) - 1, 0)' applications of the
 	/// corresponding comparisons.
 	///
-	template <typename ForwardIterator, typename Compare>
-	ForwardIterator max_element(ForwardIterator first, ForwardIterator last, Compare compare)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Compare = ranges::less, typename Projection = ranges::identity>
+	EA_CONSTEXPR ForwardIterator max_element(ForwardIterator first, ForwardSentinel last, Compare compare = {}, Projection proj = {})
 	{
-		if(first != last)
-		{
-			ForwardIterator currentMax = first;
-
-			while(++first != last)
-			{
-				if(compare(*currentMax, *first))
-					currentMax = first;
-			}
-			return currentMax;
-		}
+		if (first != last)
+			for (auto tmp = ranges::next(first); tmp != last; ++tmp)
+				if (invoke(compare, invoke(proj, *first), invoke(proj, *tmp)))
+					first = tmp;
 		return first;
 	}
 
@@ -911,14 +851,12 @@ namespace eastl
 	///
 	/// Returns: true if the unary predicate p returns true for all elements in the range [first, last)
 	///
-	template <typename InputIterator, typename Predicate>
-	inline bool all_of(InputIterator first, InputIterator last, Predicate p)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline bool all_of(InputIterator first, InputSentinel last, Predicate p, Projection proj = Projection{})
 	{
-		for(; first != last; ++first)
-		{
-			if(!p(*first))
+		for (; first != last; ++first)
+			if (!invoke(p, invoke(proj, *first)))
 				return false;
-		}
 		return true;
 	}
 
@@ -927,14 +865,12 @@ namespace eastl
 	///
 	/// Returns: true if the unary predicate p returns true for any of the elements in the range [first, last)
 	///
-	template <typename InputIterator, typename Predicate>
-	inline bool any_of(InputIterator first, InputIterator last, Predicate p)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline bool any_of(InputIterator first, InputSentinel last, Predicate pred, Projection proj = Projection{})
 	{
-		for(; first != last; ++first)
-		{
-			if(p(*first))
+		for (; first != last; ++first)
+			if (invoke(pred, invoke(proj, *first)))
 				return true;
-		}
 		return false;
 	}
 
@@ -943,42 +879,13 @@ namespace eastl
 	///
 	/// Returns: true if the unary predicate p returns true for none of the elements in the range [first, last)
 	///
-	template <typename InputIterator, typename Predicate>
-	inline bool none_of(InputIterator first, InputIterator last, Predicate p)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline bool none_of(InputIterator first, InputSentinel last, Predicate pred, Projection proj = Projection{})
 	{
-		for(; first != last; ++first)
-		{
-			if(p(*first))
+		for (; first != last; ++first)
+			if (invoke(pred, invoke(proj, *first)))
 				return false;
-		}
 		return true;
-	}
-
-
-	/// adjacent_find
-	///
-	/// Returns: The first iterator i such that both i and i + 1 are in the range
-	/// [first, last) for which the following corresponding conditions hold: *i == *(i + 1).
-	/// Returns last if no such iterator is found.
-	///
-	/// Complexity: Exactly 'find(first, last, value) - first' applications of the corresponding predicate.
-	///
-	template <typename ForwardIterator>
-	inline ForwardIterator
-	adjacent_find(ForwardIterator first, ForwardIterator last)
-	{
-		if(first != last)
-		{
-			ForwardIterator i = first;
-
-			for(++i; i != last; ++i)
-			{
-				if(*first == *i)
-					return first;
-				first = i;
-			}
-		}
-		return last;
 	}
 
 
@@ -991,9 +898,9 @@ namespace eastl
 	///
 	/// Complexity: Exactly 'find(first, last, value) - first' applications of the corresponding predicate.
 	///
-	template <typename ForwardIterator, typename BinaryPredicate>
-	inline ForwardIterator
-	adjacent_find(ForwardIterator first, ForwardIterator last, BinaryPredicate predicate)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename BinaryPredicate = ranges::equal_to, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ForwardIterator
+	adjacent_find(ForwardIterator first, ForwardSentinel last, BinaryPredicate pred = BinaryPredicate{}, Projection proj = Projection{})
 	{
 		if(first != last)
 		{
@@ -1001,7 +908,7 @@ namespace eastl
 
 			for(++i; i != last; ++i)
 			{
-				if(predicate(*first, *i))
+				if (invoke(pred, invoke(proj, *first), invoke(proj, *i)))
 					return first;
 				first = i;
 			}
@@ -1179,21 +1086,22 @@ namespace eastl
 	///
 	/// Effects: Assigns to the result iterator only if the predicate is true.
 	///
-	template <typename InputIterator, typename OutputIterator, typename Predicate>
-	inline OutputIterator
-	copy_if(InputIterator first, InputIterator last, OutputIterator result, Predicate predicate)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator>
+	copy_if(InputIterator first, InputSentinel last, OutputIterator out, Predicate pred, Projection proj = {})
 	{
 		// This implementation's performance could be improved by taking a more complicated approach like with the copy algorithm.
-		for(; first != last; ++first)
+		for (; first != last; ++first)
 		{
-			if(predicate(*first))
-				*result++ = *first;
+			auto&& x = *first;
+			if (ranges::invoke(pred, ranges::invoke(proj, x)))
+			{
+				*out = (decltype(x)&&)x;
+				++out;
+			}
 		}
-
-		return result;
+		return {first, out};
 	}
-
-
 
 
 	// Implementation moving copying both trivial and non-trivial data via a lesser iterator than random-access.
@@ -1351,37 +1259,16 @@ namespace eastl
 	/// Note: The predicate version of count is count_if and not another variation of count.
 	/// This is because both versions would have three parameters and there could be ambiguity.
 	///
-	template <typename InputIterator, typename T>
-	inline typename eastl::iterator_traits<InputIterator>::difference_type
-	count(InputIterator first, InputIterator last, const T& value)
+	template <typename InputIterator, typename InputSentinel, typename T, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline typename ranges::iter_difference_t<InputIterator>
+	count(InputIterator first, InputSentinel last, const T& value, Projection proj = {})
 	{
-		typename eastl::iterator_traits<InputIterator>::difference_type result = 0;
-
-		for(; first != last; ++first)
-		{
-			if(*first == value)
-				++result;
-		}
-		return result;
+		ranges::iter_difference_t<InputIterator> n = 0;
+		for (; first != last; ++first)
+			if (ranges::invoke(proj, *first) == value)
+				++n;
+		return n;
 	}
-
-
-	// C++ doesn't define a count with predicate, as it can effectively be synthesized via count_if
-	// with an appropriate predicate. However, it's often simpler to just have count with a predicate.
-	template <typename InputIterator, typename T, typename Predicate>
-	inline typename eastl::iterator_traits<InputIterator>::difference_type
-	count(InputIterator first, InputIterator last, const T& value, Predicate predicate)
-	{
-		typename eastl::iterator_traits<InputIterator>::difference_type result = 0;
-
-		for(; first != last; ++first)
-		{
-			if(predicate(*first, value))
-				++result;
-		}
-		return result;
-	}
-
 
 	/// count_if
 	///
@@ -1396,18 +1283,15 @@ namespace eastl
 	/// Note: The non-predicate version of count_if is count and not another variation of count_if.
 	/// This is because both versions would have three parameters and there could be ambiguity.
 	///
-	template <typename InputIterator, typename Predicate>
-	inline typename eastl::iterator_traits<InputIterator>::difference_type
-	count_if(InputIterator first, InputIterator last, Predicate predicate)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Predicate, typename Projection = ranges::identity >
+	EA_CONSTEXPR inline typename ranges::iter_difference_t<InputIterator>
+	count_if(InputIterator first, InputIterator last, Predicate pred, Projection proj = {})
 	{
-		typename eastl::iterator_traits<InputIterator>::difference_type result = 0;
-
-		for(; first != last; ++first)
-		{
-			if(predicate(*first))
-				++result;
-		}
-		return result;
+		ranges::iter_difference_t<InputIterator> n = 0;
+		for (; first != last; ++first)
+			if (ranges::invoke(pred, ranges::invoke(proj, *first)))
+				++n;
+		return n;
 	}
 
 
@@ -1425,27 +1309,14 @@ namespace eastl
 	/// Note: The predicate version of find is find_if and not another variation of find.
 	/// This is because both versions would have three parameters and there could be ambiguity.
 	///
-	template <typename InputIterator, typename T>
-	inline InputIterator
-	find(InputIterator first, InputIterator last, const T& value)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename T, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline InputIterator
+	find(InputIterator first, InputSentinel last, const T& value, Projection proj = {})
 	{
-		while((first != last) && !(*first == value)) // Note that we always express value comparisons in terms of < or ==.
+		while((first != last) && !(ranges::invoke(proj, *first) == value)) // Note that we always express value comparisons in terms of < or ==.
 			++first;
 		return first;
 	}
-
-
-	// C++ doesn't define a find with predicate, as it can effectively be synthesized via find_if
-	// with an appropriate predicate. However, it's often simpler to just have find with a predicate.
-	template <typename InputIterator, typename T, typename Predicate>
-	inline InputIterator
-	find(InputIterator first, InputIterator last, const T& value, Predicate predicate)
-	{
-		while((first != last) && !predicate(*first, value))
-			++first;
-		return first;
-	}
-
 
 
 	/// find_if
@@ -1463,11 +1334,11 @@ namespace eastl
 	/// Note: The non-predicate version of find_if is find and not another variation of find_if.
 	/// This is because both versions would have three parameters and there could be ambiguity.
 	///
-	template <typename InputIterator, typename Predicate>
-	inline InputIterator
-	find_if(InputIterator first, InputIterator last, Predicate predicate)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline InputIterator
+	find_if(InputIterator first, InputSentinel last, Predicate pred, Projection proj = {})
 	{
-		while((first != last) && !predicate(*first))
+		while((first != last) && !ranges::invoke(pred, ranges::invoke(proj, *first)))
 			++first;
 		return first;
 	}
@@ -1479,16 +1350,13 @@ namespace eastl
 	/// find_if_not works the same as find_if except it tests for if the predicate
 	/// returns false for the elements instead of true.
 	///
-	template <typename InputIterator, typename Predicate>
-	inline InputIterator
-	find_if_not(InputIterator first, InputIterator last, Predicate predicate)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline InputIterator find_if_not(InputIterator first, InputSentinel last, Predicate pred, Projection proj = {})
 	{
-		for(; first != last; ++first)
-		{
-			if(!predicate(*first))
-				return first;
-		}
-		return last;
+		for (; first != last; ++first)
+			if (!ranges::invoke(pred, ranges::invoke(proj, *first)))
+				break;
+		return first;
 	}
 
 
@@ -1727,13 +1595,14 @@ namespace eastl
 	///
 	/// Note: If function returns a result, the result is ignored.
 	///
-	template <typename InputIterator, typename Function>
-	inline Function
-	for_each(InputIterator first, InputIterator last, Function function)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename Function, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_fun_result<InputIterator, Function>
+	for_each(InputIterator first, InputSentinel last, Function fun, Projection proj = {})
 	{
-		for(; first != last; ++first)
-			function(*first);
-		return function;
+		for (; first != last; ++first)
+			invoke(fun, invoke(proj, *first));
+
+		return {ranges::detail::move(first), ranges::detail::move(fun)};
 	}
 
 	/// for_each_n
@@ -1770,13 +1639,14 @@ namespace eastl
 	///
 	/// Complexity: Exactly 'last - first' invocations of generator and assignments.
 	///
-	template <typename ForwardIterator, typename Generator>
-	inline void
-	generate(ForwardIterator first, ForwardIterator last, Generator generator)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Generator>
+	EA_CONSTEXPR inline ranges::detail::out_fun_result<ForwardIterator, Generator>
+	generate(ForwardIterator first, ForwardSentinel last, Generator gen)
 	{
-		for(; first != last; ++first) // We cannot call generate_n(first, last-first, generator)
-			*first = generator();     // because the 'last-first' might not be supported by the
-	}                                 // given iterator.
+		for (; first != last; ++first)
+			*first = invoke(gen);
+		return {ranges::detail::move(first), ranges::detail::move(gen)};
+	}                                 
 
 
 	/// generate_n
@@ -1787,13 +1657,16 @@ namespace eastl
 	///
 	/// Complexity: Exactly n invocations of generator and assignments.
 	///
-	template <typename OutputIterator, typename Size, typename Generator>
-	inline OutputIterator
-	generate_n(OutputIterator first, Size n, Generator generator)
+	template <typename OutputIterator, typename Generator>
+	EA_CONSTEXPR inline ranges::detail::out_fun_result<OutputIterator, Generator>
+	generate_n(OutputIterator first, ranges::iter_difference_t<OutputIterator> n, Generator gen)
 	{
-		for(; n > 0; --n, ++first)
-			*first = generator();
-		return first;
+		EARANGES_EXPECT(n >= 0);
+		auto norig = n;
+		auto b = ranges::uncounted(first);
+		for (; 0 != n; ++b, --n)
+			*b = invoke(gen);
+		return {ranges::recounted(first, b, norig), ranges::detail::move(gen)};
 	}
 
 
@@ -1813,13 +1686,13 @@ namespace eastl
 	///
 	/// Note: result may be equal to first.
 	///
-	template <typename InputIterator, typename OutputIterator, typename UnaryOperation>
-	inline OutputIterator
-	transform(InputIterator first, InputIterator last, OutputIterator result, UnaryOperation unaryOperation)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator, typename UnaryOperation, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator>
+	transform(InputIterator first, InputSentinel last, OutputIterator out, UnaryOperation unaryOperation, Projection proj = {})
 	{
-		for(; first != last; ++first, ++result)
-			*result = unaryOperation(*first);
-		return result;
+		for (; first != last; ++first, ++out)
+			*out = invoke(unaryOperation, invoke(proj, *first));
+		return {first, out};
 	}
 
 
@@ -1839,13 +1712,13 @@ namespace eastl
 	///
 	/// Note: result may be equal to first1 or first2.
 	///
-	template <typename InputIterator1, typename InputIterator2, typename OutputIterator, typename BinaryOperation>
-	inline OutputIterator
-	transform(InputIterator1 first1, InputIterator1 last1, InputIterator2 first2, OutputIterator result, BinaryOperation binaryOperation)
+	template <typename InputIterator1, typename InputSentinel1 = InputIterator1, typename InputIterator2, typename InputSentinel2 = InputIterator2, typename OutputIterator, typename BinaryOperation, typename Projection1 = ranges::identity, typename Projection2 = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in1_in2_out_result<InputIterator1, InputIterator2, OutputIterator>
+	transform(InputIterator1 first1, InputSentinel1 last1, InputIterator2 first2, InputSentinel2 last2, OutputIterator result, BinaryOperation binaryOperation, Projection1 proj1 = {}, Projection2 proj2 = {})
 	{
-		for(; first1 != last1; ++first1, ++first2, ++result)
-			*result = binaryOperation(*first1, *first2);
-		return result;
+		for (; first1 != last1 && first2 != last2; ++first1, ++first2, ++result)
+			*result = invoke(binaryOperation, invoke(proj1, *first1), invoke(proj2, *first2));
+		return {first1, first2, result};
 	}
 
 
@@ -2526,15 +2399,14 @@ namespace eastl
 	/// Note: The predicate version of replace is replace_if and not another variation of replace.
 	/// This is because both versions would have the same parameter count and there could be ambiguity.
 	///
-	template <typename ForwardIterator, typename T>
-	inline void
-	replace(ForwardIterator first, ForwardIterator last, const T& old_value, const T& new_value)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename T1, typename T2 = T1, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ForwardIterator
+	replace(ForwardIterator first, ForwardSentinel last, const T1& old_value, const T2& new_value, Projection proj = Projection{})
 	{
-		for(; first != last; ++first)
-		{
-			if(*first == old_value)
+		for (; first != last; ++first)
+			if (invoke(proj, *first) == old_value)
 				*first = new_value;
-		}
+		return first;
 	}
 
 
@@ -2548,15 +2420,14 @@ namespace eastl
 	/// Note: The predicate version of replace_if is replace and not another variation of replace_if.
 	/// This is because both versions would have the same parameter count and there could be ambiguity.
 	///
-	template <typename ForwardIterator, typename Predicate, typename T>
-	inline void
-	replace_if(ForwardIterator first, ForwardIterator last, Predicate predicate, const T& new_value)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Predicate, typename T, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ForwardIterator
+	replace_if(ForwardIterator first, ForwardSentinel last, Predicate pred, const T& new_value, Projection proj = Projection{})
 	{
-		for(; first != last; ++first)
-		{
-			if(predicate(*first))
+		for (; first != last; ++first)
+			if (invoke(pred, invoke(proj, *first)))
 				*first = new_value;
-		}
+		return first;
 	}
 
 
@@ -2793,13 +2664,19 @@ namespace eastl
 	/// Note: The predicate version of replace_copy is replace_copy_if and not another variation of replace_copy.
 	/// This is because both versions would have the same parameter count and there could be ambiguity.
 	///
-	template <typename InputIterator, typename OutputIterator, typename T>
-	inline OutputIterator
-	replace_copy(InputIterator first, InputIterator last, OutputIterator result, const T& old_value, const T& new_value)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator, typename T1, typename T2 = T1, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator>
+	replace_copy(InputIterator first, InputSentinel last, OutputIterator out, const T1& old_value, const T2& new_value, Projection proj = {})
 	{
-		for(; first != last; ++first, ++result)
-			*result = (*first == old_value) ? new_value : *first;
-		return result;
+		for (; first != last; ++first, ++out)
+		{
+			auto&& x = *first;
+			if (invoke(proj, x) == old_value)
+				*out = new_value;
+			else
+				*out = (decltype(x)&&)x;
+		}
+		return {first, out};
 	}
 
 
@@ -2818,15 +2695,20 @@ namespace eastl
 	/// Note: The predicate version of replace_copy_if is replace_copy and not another variation of replace_copy_if.
 	/// This is because both versions would have the same parameter count and there could be ambiguity.
 	///
-	template <typename InputIterator, typename OutputIterator, typename Predicate, typename T>
-	inline OutputIterator
-	replace_copy_if(InputIterator first, InputIterator last, OutputIterator result, Predicate predicate, const T& new_value)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator, typename Predicate, typename T, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator>
+	replace_copy_if(InputIterator first, InputSentinel last, OutputIterator out, Predicate pred, const T& new_value, Projection proj = {})
 	{
-		for(; first != last; ++first, ++result)
-			*result = predicate(*first) ? new_value : *first;
-		return result;
+		for (; first != last; ++first, ++out)
+		{
+			auto&& x = *first;
+			if (invoke(pred, invoke(proj, x)))
+				*out = new_value;
+			else
+				*out = (decltype(x)&&)x;
+		}
+		return {first, out};
 	}
-
 
 
 
