@@ -255,7 +255,7 @@
 
 #include <EARanges/functional/identity.hpp>
 #include <EARanges/functional/invoke.hpp>
-
+#include <EARanges/functional/reference_wrapper.hpp>
 #include <EARanges/iterator/traits.hpp>
 #include <EARanges/algorithm/result_types.hpp>
 
@@ -272,17 +272,6 @@ EA_RESTORE_ALL_VC_WARNINGS();
 
 #if defined(EA_PRAGMA_ONCE_SUPPORTED)
 	#pragma once // Some compilers (e.g. VC++) benefit significantly from using this. We've measured 3-4% build speed improvements in apps as a result.
-
-	//HACKHACKHACK:Including this is bad for some unknow reason
-	//#include <EARanges/iterator/operations.hpp>
-	namespace ranges
-	{
-		struct next;
-	    struct uncounted;
-	    struct recounted;
-	    //TODO: do we gain something by forwarding? struct identity;
-	    //TODO: do we gain something by forwarding? struct less;
-	}
 #endif
 
 
@@ -325,14 +314,7 @@ namespace eastl
 	/// corresponding comparisons.
 	///
 	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Compare = ranges::less, typename Projection = ranges::identity>
-	EA_CONSTEXPR ForwardIterator min_element(ForwardIterator first, ForwardSentinel last, Compare compare = {}, Projection proj = {})
-	{
-		if (first != last)
-			for (auto tmp = ranges::next(first); tmp != last; ++tmp)
-				if (ranges::invoke(compare, ranges::invoke(proj, *tmp), ranges::invoke(proj, *first)))
-					first = tmp;
-		return first;
-	}
+	EA_CONSTEXPR ForwardIterator min_element(ForwardIterator first, ForwardSentinel last, Compare compare = {}, Projection proj = {});
 
 
 	/// max_element
@@ -350,14 +332,7 @@ namespace eastl
 	/// corresponding comparisons.
 	///
 	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Compare = ranges::less, typename Projection = ranges::identity>
-	EA_CONSTEXPR ForwardIterator max_element(ForwardIterator first, ForwardSentinel last, Compare compare = {}, Projection proj = {})
-	{
-		if (first != last)
-			for (auto tmp = ranges::next(first); tmp != last; ++tmp)
-				if (invoke(compare, invoke(proj, *first), invoke(proj, *tmp)))
-					first = tmp;
-		return first;
-	}
+	EA_CONSTEXPR ForwardIterator max_element(ForwardIterator first, ForwardSentinel last, Compare compare = {}, Projection proj = {});
 
 
 	#if EASTL_MINMAX_ENABLED
@@ -619,70 +594,49 @@ namespace eastl
 	/// Complexity: At most max([(3/2)*(N - 1)], 0) applications of the corresponding predicate,
 	/// where N is distance(first, last).
 	///
-	template <typename ForwardIterator, typename Compare>
-	eastl::pair<ForwardIterator, ForwardIterator>
-	minmax_element(ForwardIterator first, ForwardIterator last, Compare compare)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Predicate = ranges::less, typename Projection = ranges::identity>
+	EA_CONSTEXPR ranges::detail::min_max_result<ForwardIterator, ForwardIterator>
+	minmax_element(ForwardIterator first, ForwardSentinel last, Predicate pred = {}, Projection proj = {})
 	{
-		eastl::pair<ForwardIterator, ForwardIterator> result(first, first);
-
-		if(!(first == last) && !(++first == last))
+		//detail::min_max_result<I, I> result{first, first};
+		ranges::detail::min_max_result<ForwardIterator, ForwardIterator> result{first, first};
+		if (first == last || ++first == last)
+			return result;
+		if (ranges::invoke(pred, ranges::invoke(proj, *first), ranges::invoke(proj, *result.min)))
+			result.min = first;
+		else
+			result.max = first;
+		while (++first != last)
 		{
-			if(compare(*first, *result.first))
+			ForwardIterator tmp = first;
+			if (++first == last)
 			{
-				result.second = result.first;
-				result.first = first;
+				if (ranges::invoke(pred, ranges::invoke(proj, *tmp), ranges::invoke(proj, *result.min)))
+					result.min = tmp;
+				else if (!ranges::invoke(pred, ranges::invoke(proj, *tmp), ranges::invoke(proj, *result.max)))
+					result.max = tmp;
+				break;
 			}
 			else
-				result.second = first;
-
-			while(++first != last)
 			{
-				ForwardIterator i = first;
-
-				if(++first == last)
+				if (ranges::invoke(pred, ranges::invoke(proj, *first), ranges::invoke(proj, *tmp)))
 				{
-					if(compare(*i, *result.first))
-						result.first = i;
-					else if(!compare(*i, *result.second))
-						result.second = i;
-					break;
+					if (ranges::invoke(pred, ranges::invoke(proj, *first), ranges::invoke(proj, *result.min)))
+						result.min = first;
+					if (!invoke(pred, ranges::invoke(proj, *tmp), ranges::invoke(proj, *result.max)))
+						result.max = tmp;
 				}
 				else
 				{
-					if(compare(*first, *i))
-					{
-						if(compare(*first, *result.first))
-							result.first = first;
-
-						if(!compare(*i, *result.second))
-							result.second = i;
-					}
-					else
-					{
-						if(compare(*i, *result.first))
-							result.first = i;
-
-						if(!compare(*first, *result.second))
-							result.second = first;
-					}
+					if (ranges::invoke(pred, ranges::invoke(proj, *tmp), ranges::invoke(proj, *result.min)))
+						result.min = tmp;
+					if (!ranges::invoke(pred, ranges::invoke(proj, *first), ranges::invoke(proj, *result.max)))
+						result.max = first;
 				}
 			}
 		}
-
 		return result;
 	}
-
-
-	template <typename ForwardIterator>
-	eastl::pair<ForwardIterator, ForwardIterator>
-	minmax_element(ForwardIterator first, ForwardIterator last)
-	{
-		typedef typename eastl::iterator_traits<ForwardIterator>::value_type value_type;
-
-		return eastl::minmax_element(first, last, eastl::less<value_type>());
-	}
-
-
 
 	/// minmax
 	///
@@ -855,7 +809,7 @@ namespace eastl
 	EA_CONSTEXPR inline bool all_of(InputIterator first, InputSentinel last, Predicate p, Projection proj = Projection{})
 	{
 		for (; first != last; ++first)
-			if (!invoke(p, invoke(proj, *first)))
+			if (!ranges::invoke(p, ranges::invoke(proj, *first)))
 				return false;
 		return true;
 	}
@@ -869,7 +823,7 @@ namespace eastl
 	EA_CONSTEXPR inline bool any_of(InputIterator first, InputSentinel last, Predicate pred, Projection proj = Projection{})
 	{
 		for (; first != last; ++first)
-			if (invoke(pred, invoke(proj, *first)))
+			if (ranges::invoke(pred, ranges::invoke(proj, *first)))
 				return true;
 		return false;
 	}
@@ -883,7 +837,7 @@ namespace eastl
 	EA_CONSTEXPR inline bool none_of(InputIterator first, InputSentinel last, Predicate pred, Projection proj = Projection{})
 	{
 		for (; first != last; ++first)
-			if (invoke(pred, invoke(proj, *first)))
+			if (ranges::invoke(pred, ranges::invoke(proj, *first)))
 				return false;
 		return true;
 	}
@@ -902,18 +856,13 @@ namespace eastl
 	EA_CONSTEXPR inline ForwardIterator
 	adjacent_find(ForwardIterator first, ForwardSentinel last, BinaryPredicate pred = BinaryPredicate{}, Projection proj = Projection{})
 	{
-		if(first != last)
-		{
-			ForwardIterator i = first;
-
-			for(++i; i != last; ++i)
-			{
-				if (invoke(pred, invoke(proj, *first), invoke(proj, *i)))
-					return first;
-				first = i;
-			}
-		}
-		return last;
+		if (first == last)
+			return first;
+		auto inext = first;
+		for (; ++inext != last; first = inext)
+			if (ranges::invoke(pred, ranges::invoke(proj, *first), ranges::invoke(proj, *inext)))
+				return first;
+		return inext;
 	}
 
 
@@ -1382,58 +1331,16 @@ namespace eastl
 	/// Complexity: At most '(last1 - first1) * (last2 - first2)' applications of the
 	/// corresponding predicate.
 	///
-	template <typename ForwardIterator1, typename ForwardIterator2>
-	ForwardIterator1
-	find_first_of(ForwardIterator1 first1, ForwardIterator1 last1,
-				  ForwardIterator2 first2, ForwardIterator2 last2)
+	template <typename ForwardIterator1, typename ForwardSentinel1 = ForwardIterator1, typename ForwardIterator2, typename ForwardSentinel = ForwardIterator2, typename Predicate = ranges::equal_to, typename Projection0 = ranges::identity, typename Projection1 = ranges::identity>
+	EA_CONSTEXPR ForwardIterator1
+	find_first_of(ForwardIterator1 begin0, ForwardSentinel1 end0, ForwardIterator2 begin1, ForwardSentinel end1, Predicate pred = {}, Projection0 proj0 = {}, Projection1 proj1 = {})
 	{
-		for(; first1 != last1; ++first1)
-		{
-			for(ForwardIterator2 i = first2; i != last2; ++i)
-			{
-				if(*first1 == *i)
-					return first1;
-			}
-		}
-		return last1;
+		for (; begin0 != end0; ++begin0)
+			for (auto tmp = begin1; tmp != end1; ++tmp)
+				if (ranges::invoke(pred, ranges::invoke(proj0, *begin0), ranges::invoke(proj1, *tmp)))
+					return begin0;
+		return begin0;
 	}
-
-
-	/// find_first_of
-	///
-	/// find_first_of is similar to find in that it performs linear search through
-	/// a range of ForwardIterators. The difference is that while find searches
-	/// for one particular value, find_first_of searches for any of several values.
-	/// Specifically, find_first_of searches for the first occurrance in the
-	/// range [first1, last1) of any of the elements in [first2, last2).
-	/// This function is thus similar to the strpbrk standard C string function.
-	///
-	/// Effects: Finds an element that matches one of a set of values.
-	///
-	/// Returns: The first iterator i in the range [first1, last1) such that for some
-	/// integer j in the range [first2, last2) the following conditions hold: pred(*i, *j) != false.
-	/// Returns last1 if no such iterator is found.
-	///
-	/// Complexity: At most '(last1 - first1) * (last2 - first2)' applications of the
-	/// corresponding predicate.
-	///
-	template <typename ForwardIterator1, typename ForwardIterator2, typename BinaryPredicate>
-	ForwardIterator1
-	find_first_of(ForwardIterator1 first1, ForwardIterator1 last1,
-				  ForwardIterator2 first2, ForwardIterator2 last2,
-				  BinaryPredicate predicate)
-	{
-		for(; first1 != last1; ++first1)
-		{
-			for(ForwardIterator2 i = first2; i != last2; ++i)
-			{
-				if(predicate(*first1, *i))
-					return first1;
-			}
-		}
-		return last1;
-	}
-
 
 	/// find_first_not_of
 	///
@@ -1600,7 +1507,7 @@ namespace eastl
 	for_each(InputIterator first, InputSentinel last, Function fun, Projection proj = {})
 	{
 		for (; first != last; ++first)
-			invoke(fun, invoke(proj, *first));
+			ranges::invoke(fun, ranges::invoke(proj, *first));
 
 		return {ranges::detail::move(first), ranges::detail::move(fun)};
 	}
@@ -1621,14 +1528,9 @@ namespace eastl
 	////  * If function returns a result, the result is ignored.
 	////  * If n < 0, behaviour is undefined.
 	///
-	template <typename InputIterator, typename Size, typename Function>
+	template <typename InputIterator, typename Function, typename Projection = ranges::identity>
 	EA_CPP14_CONSTEXPR inline InputIterator
-	for_each_n(InputIterator first, Size n, Function function)
-	{
-		for (Size i = 0; i < n; ++first, i++)
-			function(*first);
-		return first;
-	}
+	for_each_n(InputIterator first, ranges::iter_difference_t<InputIterator> n, Function fun, Projection proj = {});
 
 
 	/// generate
@@ -1644,7 +1546,7 @@ namespace eastl
 	generate(ForwardIterator first, ForwardSentinel last, Generator gen)
 	{
 		for (; first != last; ++first)
-			*first = invoke(gen);
+			*first = ranges::invoke(gen);
 		return {ranges::detail::move(first), ranges::detail::move(gen)};
 	}                                 
 
@@ -1659,15 +1561,7 @@ namespace eastl
 	///
 	template <typename OutputIterator, typename Generator>
 	EA_CONSTEXPR inline ranges::detail::out_fun_result<OutputIterator, Generator>
-	generate_n(OutputIterator first, ranges::iter_difference_t<OutputIterator> n, Generator gen)
-	{
-		EARANGES_EXPECT(n >= 0);
-		auto norig = n;
-		auto b = ranges::uncounted(first);
-		for (; 0 != n; ++b, --n)
-			*b = invoke(gen);
-		return {ranges::recounted(first, b, norig), ranges::detail::move(gen)};
-	}
+	generate_n(OutputIterator first, ranges::iter_difference_t<OutputIterator> n, Generator gen);
 
 
 	/// transform
@@ -1691,7 +1585,7 @@ namespace eastl
 	transform(InputIterator first, InputSentinel last, OutputIterator out, UnaryOperation unaryOperation, Projection proj = {})
 	{
 		for (; first != last; ++first, ++out)
-			*out = invoke(unaryOperation, invoke(proj, *first));
+			*out = ranges::invoke(unaryOperation, ranges::invoke(proj, *first));
 		return {first, out};
 	}
 
@@ -1717,7 +1611,7 @@ namespace eastl
 	transform(InputIterator1 first1, InputSentinel1 last1, InputIterator2 first2, InputSentinel2 last2, OutputIterator result, BinaryOperation binaryOperation, Projection1 proj1 = {}, Projection2 proj2 = {})
 	{
 		for (; first1 != last1 && first2 != last2; ++first1, ++first2, ++result)
-			*result = invoke(binaryOperation, invoke(proj1, *first1), invoke(proj2, *first2));
+			*result = ranges::invoke(binaryOperation, ranges::invoke(proj1, *first1), ranges::invoke(proj2, *first2));
 		return {first1, first2, result};
 	}
 
@@ -1734,15 +1628,13 @@ namespace eastl
 	/// iterators that uses memcmp or some trick memory comparison function.
 	/// We should verify that such a thing results in an improvement.
 	///
-	template <typename InputIterator1, typename InputIterator2>
-	EA_CPP14_CONSTEXPR inline bool equal(InputIterator1 first1, InputIterator1 last1, InputIterator2 first2)
+	template <typename InputIterator1, typename InputSentinel1 = InputIterator1, typename InputIterator2, typename InputSentinel2 = InputIterator2, typename Predicate = ranges::equal_to, typename Projection0 = ranges::identity, typename Projection1 = ranges::identity>
+	EA_CPP14_CONSTEXPR inline bool equal(InputIterator1 begin0,  InputSentinel1 end0, InputIterator2 begin1, InputSentinel2 end1, Predicate pred = {}, Projection0 proj0 = {}, Projection1 proj1 = {})
 	{
-		for(; first1 != last1; ++first1, ++first2)
-		{
-			if(!(*first1 == *first2)) // Note that we always express value comparisons in terms of < or ==.
+		for (; begin0 != end0 && begin1 != end1; ++begin0, ++begin1)
+			if (!ranges::invoke(pred, ranges::invoke(proj0, *begin0), ranges::invoke(proj1, *begin1)))
 				return false;
-		}
-		return true;
+		return begin0 == end0 && begin1 == end1;
 	}
 
 	/* Enable the following if there was shown to be some benefit. A glance and Microsoft VC++ memcmp
@@ -1783,30 +1675,6 @@ namespace eastl
 	inline bool equal(const uint64_t* first1, const uint64_t* last1, const uint64_t* first2)
 		{ return (memcmp(first1, first2, (size_t)((uintptr_t)last1 - (uintptr_t)first1)) == 0); }
 	*/
-
-
-
-	/// equal
-	///
-	/// Returns: true if for every iterator i in the range [first1, last1) the
-	/// following corresponding conditions hold: pred(*i, *(first2 + (i first1))) != false.
-	/// Otherwise, returns false.
-	///
-	/// Complexity: At most last1 first1 applications of the corresponding predicate.
-	///
-	template <typename InputIterator1, typename InputIterator2, typename BinaryPredicate>
-	inline bool
-	equal(InputIterator1 first1, InputIterator1 last1, InputIterator2 first2, BinaryPredicate predicate)
-	{
-		for(; first1 != last1; ++first1, ++first2)
-		{
-			if(!predicate(*first1, *first2))
-				return false;
-		}
-		return true;
-	}
-
-
 
 	/// identical
 	///
@@ -1873,21 +1741,21 @@ namespace eastl
 	/// of the sequences yields the same result as the comparison of the first
 	/// corresponding pair of elements that are not equivalent.
 	///
-	template <typename InputIterator1, typename InputIterator2>
-	inline bool
-	lexicographical_compare(InputIterator1 first1, InputIterator1 last1, InputIterator2 first2, InputIterator2 last2)
+	template <typename InputIterator1, typename InputSentinel1 = InputIterator1, typename InputIterator2, typename InputSentinel2 = InputIterator2, typename Compare = ranges::less, typename Projection0 = ranges::identity, typename Projection1 = ranges::identity>
+	EA_CONSTEXPR inline bool
+	lexicographical_compare(InputIterator1 begin0, InputSentinel1 end0, InputIterator2 begin1, InputSentinel2 end1, Compare pred = {}, Projection0 proj0 = {}, Projection1 proj1 = {})
 	{
-		for(; (first1 != last1) && (first2 != last2); ++first1, ++first2)
+		for (; begin1 != end1; ++begin0, ++begin1)
 		{
-			if(*first1 < *first2)
+			if (begin0 == end0 || ranges::invoke(pred, ranges::invoke(proj0, *begin0), ranges::invoke(proj1, *begin1)))
 				return true;
-			if(*first2 < *first1)
+			if (ranges::invoke(pred, ranges::invoke(proj1, *begin1), ranges::invoke(proj0, *begin0)))
 				return false;
 		}
-		return (first1 == last1) && (first2 != last2);
+		return (begin0 == end0) && (begin1 != end1);
 	}
 
-	inline bool     // Specialization for const char*.
+	EA_CONSTEXPR inline bool // Specialization for const char*.
 	lexicographical_compare(const char* first1, const char* last1, const char* first2, const char* last2)
 	{
 		const ptrdiff_t n1(last1 - first1), n2(last2 - first2);
@@ -1898,7 +1766,7 @@ namespace eastl
 		return result ? (result < 0) : (n1 < n2);
 	}
 
-	inline bool     // Specialization for char*.
+	EA_CONSTEXPR inline bool // Specialization for char*.
 	lexicographical_compare(char* first1, char* last1, char* first2, char* last2)
 	{
 		const ptrdiff_t n1(last1 - first1), n2(last2 - first2);
@@ -1909,7 +1777,7 @@ namespace eastl
 		return result ? (result < 0) : (n1 < n2);
 	}
 
-	inline bool     // Specialization for const unsigned char*.
+	EA_CONSTEXPR inline bool // Specialization for const unsigned char*.
 	lexicographical_compare(const unsigned char* first1, const unsigned char* last1, const unsigned char* first2, const unsigned char* last2)
 	{
 		const ptrdiff_t n1(last1 - first1), n2(last2 - first2);
@@ -1920,7 +1788,7 @@ namespace eastl
 		return result ? (result < 0) : (n1 < n2);
 	}
 
-	inline bool     // Specialization for unsigned char*.
+	EA_CONSTEXPR inline bool // Specialization for unsigned char*.
 	lexicographical_compare(unsigned char* first1, unsigned char* last1, unsigned char* first2, unsigned char* last2)
 	{
 		const ptrdiff_t n1(last1 - first1), n2(last2 - first2);
@@ -1931,7 +1799,7 @@ namespace eastl
 		return result ? (result < 0) : (n1 < n2);
 	}
 
-	inline bool     // Specialization for const signed char*.
+	EA_CONSTEXPR inline bool // Specialization for const signed char*.
 	lexicographical_compare(const signed char* first1, const signed char* last1, const signed char* first2, const signed char* last2)
 	{
 		const ptrdiff_t n1(last1 - first1), n2(last2 - first2);
@@ -1942,7 +1810,7 @@ namespace eastl
 		return result ? (result < 0) : (n1 < n2);
 	}
 
-	inline bool     // Specialization for signed char*.
+	EA_CONSTEXPR inline bool // Specialization for signed char*.
 	lexicographical_compare(signed char* first1, signed char* last1, signed char* first2, signed char* last2)
 	{
 		const ptrdiff_t n1(last1 - first1), n2(last2 - first2);
@@ -1971,47 +1839,6 @@ namespace eastl
 		//    return result ? (result < 0) : (n1 < n2);
 		//}
 	#endif
-
-
-
-	/// lexicographical_compare
-	///
-	/// Returns: true if the sequence of elements defined by the range
-	/// [first1, last1) is lexicographically less than the sequence of
-	/// elements defined by the range [first2, last2). Returns false otherwise.
-	///
-	/// Complexity: At most 'min((last1 -first1), (last2 - first2))' applications
-	/// of the corresponding comparison.
-	///
-	/// Note: If two sequences have the same number of elements and their
-	/// corresponding elements are equivalent, then neither sequence is
-	/// lexicographically less than the other. If one sequence is a prefix
-	/// of the other, then the shorter sequence is lexicographically less
-	/// than the longer sequence. Otherwise, the lexicographical comparison
-	/// of the sequences yields the same result as the comparison of the first
-	/// corresponding pair of elements that are not equivalent.
-	///
-	/// Note: False is always returned if range 1 is exhausted before range 2.
-	/// The result of this is that you can't do a successful reverse compare
-	/// (e.g. use greater<> as the comparison instead of less<>) unless the
-	/// two sequences are of identical length. What you want to do is reverse
-	/// the order of the arguments in order to get the desired effect.
-	///
-	template <typename InputIterator1, typename InputIterator2, typename Compare>
-	inline bool
-	lexicographical_compare(InputIterator1 first1, InputIterator1 last1,
-							InputIterator2 first2, InputIterator2 last2, Compare compare)
-	{
-		for(; (first1 != last1) && (first2 != last2); ++first1, ++first2)
-		{
-			if(compare(*first1, *first2))
-				return true;
-			if(compare(*first2, *first1))
-				return false;
-		}
-		return (first1 == last1) && (first2 != last2);
-	}
-
 
 #if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
 
@@ -2049,35 +1876,7 @@ namespace eastl
 	}
 #endif
 
-	/// mismatch
-	///
-	/// Finds the first position where the two ranges [first1, last1) and
-	/// [first2, first2 + (last1 - first1)) differ. The two versions of
-	/// mismatch use different tests for whether elements differ.
-	///
-	/// Returns: A pair of iterators i and j such that j == first2 + (i - first1)
-	/// and i is the first iterator in the range [first1, last1) for which the
-	/// following corresponding condition holds: !(*i == *(first2 + (i - first1))).
-	/// Returns the pair last1 and first2 + (last1 - first1) if such an iterator
-	/// i is not found.
-	///
-	/// Complexity: At most last1 first1 applications of the corresponding predicate.
-	///
-	template <class InputIterator1, class InputIterator2>
-	inline eastl::pair<InputIterator1, InputIterator2>
-	mismatch(InputIterator1 first1, InputIterator1 last1,
-			 InputIterator2 first2) // , InputIterator2 last2)
-	{
-		while((first1 != last1) && (*first1 == *first2)) // && (first2 != last2) <- C++ standard mismatch function doesn't check first2/last2.
-		{
-			++first1;
-			++first2;
-		}
-
-		return eastl::pair<InputIterator1, InputIterator2>(first1, first2);
-	}
-
-
+	
 	/// mismatch
 	///
 	/// Finds the first position where the two ranges [first1, last1) and
@@ -2092,19 +1891,14 @@ namespace eastl
 	///
 	/// Complexity: At most last1 first1 applications of the corresponding predicate.
 	///
-	template <class InputIterator1, class InputIterator2, class BinaryPredicate>
-	inline eastl::pair<InputIterator1, InputIterator2>
-	mismatch(InputIterator1 first1, InputIterator1 last1,
-			 InputIterator2 first2, // InputIterator2 last2,
-			 BinaryPredicate predicate)
+	template <class InputIterator1, class InputSentinel1 = InputIterator1, class InputIterator2, class InputSentinel2 = InputIterator2, class BinaryPredicate = ranges::equal_to, class Projection0 = ranges::identity, class Projection1 = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in1_in2_result<InputIterator1, InputIterator2>
+	mismatch(InputIterator1 begin1, InputSentinel1 end1, InputIterator2 begin2, InputSentinel2 end2, BinaryPredicate pred = {}, Projection0 proj1 = {}, Projection1 proj2 = {})
 	{
-		while((first1 != last1) && predicate(*first1, *first2)) // && (first2 != last2) <- C++ standard mismatch function doesn't check first2/last2.
-		{
-			++first1;
-			++first2;
-		}
-
-		return eastl::pair<InputIterator1, InputIterator2>(first1, first2);
+		for (; begin1 != end1 && begin2 != end2; ++begin1, ++begin2)
+			if (!ranges::invoke(pred, ranges::invoke(proj1, *begin1), ranges::invoke(proj2, *begin2)))
+				break;
+		return {begin1, begin2};
 	}
 
 
@@ -2404,7 +2198,7 @@ namespace eastl
 	replace(ForwardIterator first, ForwardSentinel last, const T1& old_value, const T2& new_value, Projection proj = Projection{})
 	{
 		for (; first != last; ++first)
-			if (invoke(proj, *first) == old_value)
+			if (ranges::invoke(proj, *first) == old_value)
 				*first = new_value;
 		return first;
 	}
@@ -2425,7 +2219,7 @@ namespace eastl
 	replace_if(ForwardIterator first, ForwardSentinel last, Predicate pred, const T& new_value, Projection proj = Projection{})
 	{
 		for (; first != last; ++first)
-			if (invoke(pred, invoke(proj, *first)))
+			if (ranges::invoke(pred, ranges::invoke(proj, *first)))
 				*first = new_value;
 		return first;
 	}
@@ -2443,19 +2237,20 @@ namespace eastl
 	///
 	/// Complexity: Exactly 'last - first' applications of the corresponding predicate.
 	///
-	template <typename InputIterator, typename OutputIterator, typename T>
-	inline OutputIterator
-	remove_copy(InputIterator first, InputIterator last, OutputIterator result, const T& value)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator, typename T, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator>
+	remove_copy(InputIterator first, InputSentinel last, OutputIterator out, const T& value, Projection proj = {})
 	{
-		for(; first != last; ++first)
+		for (; first != last; ++first)
 		{
-			if(!(*first == value)) // Note that we always express value comparisons in terms of < or ==.
+			auto&& x = *first;
+			if (!(ranges::invoke(proj, x) == value))
 			{
-				*result = eastl::move(*first);
-				++result;
+				*out = (decltype(x)&&)x;
+				++out;
 			}
 		}
-		return result;
+		return {first, out};
 	}
 
 
@@ -2471,19 +2266,20 @@ namespace eastl
 	///
 	/// Complexity: Exactly 'last - first' applications of the corresponding predicate.
 	///
-	template <typename InputIterator, typename OutputIterator, typename Predicate>
-	inline OutputIterator
-	remove_copy_if(InputIterator first, InputIterator last, OutputIterator result, Predicate predicate)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator, typename Predicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator>
+	remove_copy_if(InputIterator first, InputSentinel last, OutputIterator out, Predicate pred, Projection proj = Projection{})
 	{
-		for(; first != last; ++first)
+		for (; first != last; ++first)
 		{
-			if(!predicate(*first))
+			auto&& x = *first;
+			if (!(ranges::invoke(pred, ranges::invoke(proj, x))))
 			{
-				*result = eastl::move(*first);
-				++result;
+				*out = (decltype(x)&&)x;
+				++out;
 			}
 		}
-		return result;
+		return {first, out};
 	}
 
 
@@ -2671,7 +2467,7 @@ namespace eastl
 		for (; first != last; ++first, ++out)
 		{
 			auto&& x = *first;
-			if (invoke(proj, x) == old_value)
+			if (ranges::invoke(proj, x) == old_value)
 				*out = new_value;
 			else
 				*out = (decltype(x)&&)x;
@@ -2702,7 +2498,7 @@ namespace eastl
 		for (; first != last; ++first, ++out)
 		{
 			auto&& x = *first;
-			if (invoke(pred, invoke(proj, x)))
+			if (ranges::invoke(pred, ranges::invoke(proj, x)))
 				*out = new_value;
 			else
 				*out = (decltype(x)&&)x;
@@ -2718,19 +2514,19 @@ namespace eastl
 	// efficiently for some types of iterators and types.
 	//
 	template <typename BidirectionalIterator>
-	inline void reverse_impl(BidirectionalIterator first, BidirectionalIterator last, EASTL_ITC_NS::bidirectional_iterator_tag)
+	EA_CONSTEXPR inline void reverse_impl(BidirectionalIterator first, BidirectionalIterator last, EASTL_ITC_NS::bidirectional_iterator_tag)
 	{
 		for(; (first != last) && (first != --last); ++first) // We are not allowed to use operator <, <=, >, >= with a
-			eastl::iter_swap(first, last);                   // generic (bidirectional or otherwise) iterator.
+			ranges::iter_swap(first, last);                   // generic (bidirectional or otherwise) iterator.
 	}
 
 	template <typename RandomAccessIterator>
-	inline void reverse_impl(RandomAccessIterator first, RandomAccessIterator last, EASTL_ITC_NS::random_access_iterator_tag)
+	EA_CONSTEXPR inline void reverse_impl(RandomAccessIterator first, RandomAccessIterator last, EASTL_ITC_NS::random_access_iterator_tag)
 	{
 		if(first != last)
 		{
 			for(; first < --last; ++first)      // With a random access iterator, we can use operator < to more efficiently implement
-				eastl::iter_swap(first, last);  // this algorithm. A generic iterator doesn't necessarily have an operator < defined.
+				ranges::iter_swap(first, last);  // this algorithm. A generic iterator doesn't necessarily have an operator < defined.
 		}
 	}
 
@@ -2743,12 +2539,8 @@ namespace eastl
 	///
 	/// Complexity: Exactly '(last - first) / 2' swaps.
 	///
-	template <typename BidirectionalIterator>
-	inline void reverse(BidirectionalIterator first, BidirectionalIterator last)
-	{
-		typedef typename eastl::iterator_traits<BidirectionalIterator>::iterator_category IC;
-		eastl::reverse_impl(first, last, IC());
-	}
+	template <typename BidirectionalIterator, typename BidirectionalSentinel = BidirectionalIterator>
+	EA_CONSTEXPR inline BidirectionalIterator reverse(BidirectionalIterator first, BidirectionalSentinel end_);
 
 
 
@@ -2768,14 +2560,9 @@ namespace eastl
 	///
 	/// Complexity: Exactly 'last - first' assignments.
 	///
-	template <typename BidirectionalIterator, typename OutputIterator>
-	inline OutputIterator
-	reverse_copy(BidirectionalIterator first, BidirectionalIterator last, OutputIterator result)
-	{
-		for(; first != last; ++result)
-			*result = *--last;
-		return result;
-	}
+	template <typename BidirectionalIterator, typename BidirectionalSentinel = BidirectionalIterator, typename OutputIterator>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<BidirectionalIterator, OutputIterator>
+	reverse_copy(BidirectionalIterator first, BidirectionalSentinel end, OutputIterator out);
 
 
 
@@ -3138,63 +2925,9 @@ namespace eastl
 	///    ...
 	///    intArray.erase(unique(intArray.begin(), intArray.end()), intArray.end());
 	///
-	template <typename ForwardIterator>
-	ForwardIterator unique(ForwardIterator first, ForwardIterator last)
-	{
-		first = eastl::adjacent_find<ForwardIterator>(first, last);
-
-		if(first != last) // We expect that there are duplicated items, else the user wouldn't be calling this function.
-		{
-			ForwardIterator dest(first);
-
-			for(++first; first != last; ++first)
-			{
-				if(!(*dest == *first)) // Note that we always express value comparisons in terms of < or ==.
-					*++dest = *first;
-			}
-			return ++dest;
-		}
-		return last;
-	}
-
-
-	/// unique
-	///
-	/// Given a sorted range, this function removes duplicated items.
-	/// Note that if you have a container then you will probably want
-	/// to call erase on the container with the return value if your
-	/// goal is to remove the duplicated items from the container.
-	///
-	/// Effects: Eliminates all but the first element from every consecutive
-	/// group of equal elements referred to by the iterator i in the range
-	/// [first, last) for which the following corresponding condition holds:
-	/// predicate(*i, *(i - 1)) != false.
-	///
-	/// Returns: The end of the resulting range.
-	///
-	/// Complexity: If the range (last - first) is not empty, exactly (last - first)
-	/// applications of the corresponding predicate, otherwise no applications of the predicate.
-	///
-	template <typename ForwardIterator, typename BinaryPredicate>
-	ForwardIterator unique(ForwardIterator first, ForwardIterator last, BinaryPredicate predicate)
-	{
-		first = eastl::adjacent_find<ForwardIterator, BinaryPredicate>(first, last, predicate);
-
-		if(first != last) // We expect that there are duplicated items, else the user wouldn't be calling this function.
-		{
-			ForwardIterator dest(first);
-
-			for(++first; first != last; ++first)
-			{
-				if(!predicate(*dest, *first))
-					*++dest = *first;
-			}
-			return ++dest;
-		}
-		return last;
-	}
-
-
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename Predicate = ranges::equal_to, typename Projection = ranges::identity>
+	EA_CONSTEXPR ForwardIterator
+	unique(ForwardIterator first, ForwardSentinel last, Predicate pred = {}, Projection proj = {});
 
 	// find_end
 	//
@@ -4202,13 +3935,8 @@ namespace eastl
 	/// returns an OutputIterator to the element past the last element copied
 	/// (i.e. result + (last - first))
 	///
-	template <typename ForwardIterator, typename OutputIterator>
-	OutputIterator rotate_copy(ForwardIterator first, ForwardIterator middle, ForwardIterator last, OutputIterator result)
-	{
-		return eastl::copy(first, middle, eastl::copy(middle, last, result));
-	}
-
-
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename OutputIterator, typename Projection = ranges::identity>
+	EA_CONSTEXPR ranges::detail::in_out_result<ForwardIterator, OutputIterator> rotate_copy(ForwardIterator first, ForwardIterator middle, ForwardSentinel last, OutputIterator out);
 
 	/// clamp
 	///
@@ -4237,12 +3965,12 @@ namespace eastl
 	/// predicate(v) evaluates to true appear before any elements for which predicate(v)
 	/// is false.
 	///
-	template <class InputIterator, class UnaryPredicate>
-	EA_CONSTEXPR bool is_partitioned(InputIterator first, InputIterator last, UnaryPredicate predicate)
+	template <class InputIterator, class InputSentinel = InputIterator, class UnaryPredicate, typename Projection = ranges::identity>
+	EA_CONSTEXPR bool is_partitioned(InputIterator first, InputSentinel last, UnaryPredicate pred, Projection proj = {})
 	{
 		for (; first != last; ++first)
 		{
-			if (!predicate(*first))
+			if (!ranges::invoke(pred, ranges::invoke(proj, *first)))
 			{
 				// advance the iterator, we don't need to call the predicate on this item
 				// again in the "false" loop below.
@@ -4252,7 +3980,7 @@ namespace eastl
 		}
 		for (; first != last; ++first)
 		{
-			if (predicate(*first))
+			if (ranges::invoke(pred, ranges::invoke(proj, *first)))
 			{
 				return false;
 			}
@@ -4294,5 +4022,7 @@ namespace eastl
 
 } // namespace eastl
 
+
+#include "algorithm_impl.h"
 
 #endif // Header include guard
