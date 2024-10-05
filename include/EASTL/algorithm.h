@@ -3944,19 +3944,12 @@ namespace eastl
 	///
 	/// http://en.cppreference.com/w/cpp/algorithm/clamp
 	///
-	template <class T, class Compare>
-	EA_CONSTEXPR const T& clamp(const T& v, const T& lo, const T& hi, Compare comp)
+	template <class T, class Compare = eastl::less>
+	EA_CONSTEXPR const T& clamp(const T& v, const T& lo, const T& hi, Compare comp = {})
 	{
 		EASTL_ASSERT(!comp(hi, lo));
 		return comp(v, lo) ? lo : comp(hi, v) ? hi : v;
 	}
-
-	template <class T>
-	EA_CONSTEXPR const T& clamp(const T& v, const T& lo, const T& hi)
-	{
-		return eastl::clamp(v, lo, hi, eastl::less<>());
-	}
-
 
 	/// is_partitioned
 	///
@@ -3998,27 +3991,9 @@ namespace eastl
 	/// last if all elements satisfy the predicate.
 	///
 	/// Note: this is a more general version of lower_bound.
-	template <class ForwardIterator, class UnaryPredicate>
-	EA_CONSTEXPR ForwardIterator partition_point(ForwardIterator first, ForwardIterator last, UnaryPredicate predicate)
-	{
-		// Just binary chop our way to the first one where predicate(x) is false
-		for (auto length = eastl::distance(first, last); 0 < length;)
-		{
-			const auto half = length / 2;
-			const auto middle = eastl::next(first, half);
-			if (predicate(*middle))
-			{
-				first = eastl::next(middle);
-				length -= (half + 1);
-			}
-			else
-			{
-				length = half;
-			}
-		}
-
-		return first;
-	}
+	template <class ForwardIterator, class ForwardSentinel = ForwardIterator, class UnaryPredicate, class Projection = ranges::identity>
+	EA_CONSTEXPR ForwardIterator
+	partition_point(ForwardIterator first, ForwardSentinel last, UnaryPredicate predicate, Projection proj = {});
 
 } // namespace eastl
 

@@ -1,6 +1,8 @@
 
 #include <EARanges/algorithm/copy.hpp>
 #include <EARanges/iterator/operations.hpp>
+#include <EARanges/algorithm/aux_/partition_point_n.hpp>
+
 namespace eastl
 {
 	template <typename ForwardIterator, typename ForwardSentinel, typename Compare, typename Projection>
@@ -88,4 +90,29 @@ namespace eastl
 		}
 		return first;
 	}
+	template <class ForwardIterator, class ForwardSentinel, class UnaryPredicate, class Projection>
+	EA_CONSTEXPR ForwardIterator partition_point(ForwardIterator first, ForwardSentinel last, UnaryPredicate pred, Projection proj)
+	{
+		if (EARANGES_CONSTEXPR_IF(ranges::sized_sentinel_for<ForwardSentinel, ForwardIterator>))
+		{
+			auto len = ranges::distance(first, eastl::move(last));
+			return ranges::aux::partition_point_n(eastl::move(first), len, eastl::move(pred), eastl::move(proj));
+		}
+
+		// Probe exponentially for either last-of-range or an iterator that is past the partition point (i.e., does not satisfy pred).
+		auto len = ranges::iter_difference_t<ForwardIterator>{1};
+		while (true)
+		{
+			auto mid = first;
+			auto d = ranges::advance(mid, len, last);
+			if (mid == last || !ranges::invoke(pred, ranges::invoke(proj, *mid)))
+			{
+				len -= d;
+				return ranges::aux::partition_point_n(eastl::move(first), len, ranges::ref(pred), ranges::ref(proj));
+			}
+			first = eastl::move(mid);
+			len *= 2;
+		}	
+	}
+	
 }

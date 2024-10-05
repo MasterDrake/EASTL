@@ -16,6 +16,7 @@
 #include <EASTL/iterator.h>
 #include <string.h> // memcpy, memcmp, memmove
 
+#include <EARanges/algorithm/result_types.hpp>
 
 namespace eastl
 {
@@ -48,43 +49,47 @@ namespace eastl
 	template <typename /*InputIteratorCategory*/, bool /*isMove*/, bool /*canMemmove*/>
 	struct move_and_copy_helper
 	{
-		template <typename InputIterator, typename OutputIterator>
-		static OutputIterator move_or_copy(InputIterator first, InputIterator last, OutputIterator result)
+		template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+		EA_CONSTEXPR static ranges::detail::in_out_result<InputIterator, OutputIterator> move_or_copy(InputIterator first, InputSentinel last, OutputIterator result)
 		{
-			for(; first != last; ++result, ++first)
+			for (; first != last; ++first, ++result)
 				*result = *first;
-			return result;
+			return {first, result};
 		}
 	};
 
+	//TODO: Finish this implementation copying copy_n or using ranges:: facilities to calculate the difference between iterator and sentinel
+	//		It needs ranges::distance that doesn't work on clang and forward declaration. Not even forwarding the definition worked this time.
+	//		To be fair Eric Nieblier implementation was the same as the generic one so maybe there' no need to obssess...
+	// 
 	// Specialization for copying non-trivial data via a random-access iterator. It's theoretically faster because the compiler can see the count when its a compile-time const.
 	// This specialization converts the random access InputIterator last-first to an integral type. There's simple way for us to take advantage of a random access output iterator,
 	// as the range is specified by the input instead of the output, and distance(first, last) for a non-random-access iterator is potentially slow.
-	template <>
-	struct move_and_copy_helper<EASTL_ITC_NS::random_access_iterator_tag, false, false>
-	{
-		template <typename InputIterator, typename OutputIterator>
-		static OutputIterator move_or_copy(InputIterator first, InputIterator last, OutputIterator result)
-		{
-			typedef typename eastl::iterator_traits<InputIterator>::difference_type difference_type;
-
-			for(difference_type n = (last - first); n > 0; --n, ++first, ++result)
-				*result = *first;
-
-			return result;
-		}
-	};
+	//template <>
+	//struct move_and_copy_helper<EASTL_ITC_NS::random_access_iterator_tag, false, false>
+	//{
+	//	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+	//	EA_CONSTEXPR static ranges::detail::in_out_result<InputIterator, OutputIterator>
+	//	move_or_copy(InputIterator first, InputSentinel last, OutputIterator result)
+	//	{
+	//		auto n = ranges::distance(first, last);
+	//		for (; n > 0; --n, ++first, ++result)
+	//			*result = *first;
+	//
+	//		return {first, result};
+	//	}
+	//};
 
 	// Specialization for moving non-trivial data via a lesser iterator than random-access.
 	template <typename InputIteratorCategory>
 	struct move_and_copy_helper<InputIteratorCategory, true, false>
 	{
-		template <typename InputIterator, typename OutputIterator>
-		static OutputIterator move_or_copy(InputIterator first, InputIterator last, OutputIterator result)
+		template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+		EA_CONSTEXPR static ranges::detail::in_out_result<InputIterator, OutputIterator> move_or_copy(InputIterator first, InputSentinel last, OutputIterator result)
 		{
 			for(; first != last; ++result, ++first)
 				*result = eastl::move(*first);
-			return result;
+			return {first, result};
 		}
 	};
 
@@ -92,15 +97,15 @@ namespace eastl
 	template <>
 	struct move_and_copy_helper<EASTL_ITC_NS::random_access_iterator_tag, true, false>
 	{
-		template <typename InputIterator, typename OutputIterator>
-		static OutputIterator move_or_copy(InputIterator first, InputIterator last, OutputIterator result)
+		template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+		EA_CONSTEXPR static ranges::detail::in_out_result<InputIterator, OutputIterator> move_or_copy(InputIterator first, InputSentinel last, OutputIterator result)
 		{
 			typedef typename eastl::iterator_traits<InputIterator>::difference_type difference_type;
 
 			for(difference_type n = (last - first); n > 0; --n, ++first, ++result)
 				*result = eastl::move(*first);
 
-			return result;
+			return {first, result};
 		}
 	};
 
@@ -108,19 +113,29 @@ namespace eastl
 	template <bool isMove>
 	struct move_and_copy_helper<EASTL_ITC_NS::random_access_iterator_tag, isMove, true>
 	{
-		template <typename T>
-		static T* move_or_copy(const T* first, const T* last, T* result)
+		template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+		static ranges::detail::in_out_result<InputIterator, OutputIterator> move_or_copy(InputIterator first,
+		                                                                                 InputSentinel last,
+		                                                                                 OutputIterator result)
 		{
-			if (EASTL_UNLIKELY(first == last))
-				return result;
+			if (first == last)
+				return {first, result};
 
-			// We could use memcpy here if there's no range overlap, but memcpy is rarely much faster than memmove.
-			return (T*)memmove(result, first, (size_t)((uintptr_t)last - (uintptr_t)first)) + (last - first);
+			typedef typename eastl::iterator_traits<OutputIterator>::pointer ptr;
+			typedef typename eastl::iterator_traits<OutputIterator>::value_type T;
+
+			const size_t num_bytes = static_cast<size_t>((last - first) * sizeof(T));
+
+			result = static_cast<ptr>(memmove(result, first, num_bytes));
+
+			// Return updated iterators because memmove doesn't increase result
+			return {last, (ptr)(result + (last - first))};
 		}
 	};
 
 
-	namespace internal {
+	namespace internal
+	{
 		// This exists to handle the case when EASTL_ITC_NS is `std`
 		// and the C++ version is older than C++20, in this case
 		// std::contiguous_iterator_tag does not exist so we can't use
@@ -134,7 +149,8 @@ namespace eastl
 	#endif
 
 		template <typename InputIterator, typename OutputIterator>
-		struct can_be_memmoved_helper {
+		struct can_be_memmoved_helper
+		{
 			using IIC = typename eastl::iterator_traits<InputIterator>::iterator_category;
 			using OIC = typename eastl::iterator_traits<OutputIterator>::iterator_category;
 			using value_type_input = typename eastl::iterator_traits<InputIterator>::value_type;
@@ -148,8 +164,8 @@ namespace eastl
 		};
 	}
 
-	template <bool isMove, typename InputIterator, typename OutputIterator>
-	inline OutputIterator move_and_copy_chooser(InputIterator first, InputIterator last, OutputIterator result)
+	template <bool isMove, typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator> move_and_copy_chooser(InputIterator first, InputSentinel last, OutputIterator result)
 	{
 		typedef typename eastl::iterator_traits<InputIterator>::iterator_category  IIC;
 
@@ -158,17 +174,6 @@ namespace eastl
 		// Need to choose based on the input iterator tag and not the output iterator tag, because containers accept input ranges of iterator types different than self.
 		return eastl::move_and_copy_helper<IIC, isMove, canBeMemmoved>::move_or_copy(first, last, result);
 	}
-
-
-	// We have a second layer of unwrap_iterator calls because the original iterator might be something like move_iterator<reverse_iterator<int*> > (i.e. doubly-wrapped).
-	template <bool isMove, typename InputIterator, typename OutputIterator>
-	EASTL_REMOVE_AT_2024_SEPT inline OutputIterator move_and_copy_unwrapper(InputIterator first, InputIterator last, OutputIterator result)
-	{
-		EASTL_INTERNAL_DISABLE_DEPRECATED() // 'unwrap_iterator': was declared deprecated
-		return OutputIterator(eastl::move_and_copy_chooser<isMove>(eastl::unwrap_iterator(first), eastl::unwrap_iterator(last), eastl::unwrap_iterator(result))); // Have to convert to OutputIterator because unwrap_iterator(result) could be a T*
-		EASTL_INTERNAL_RESTORE_DEPRECATED()
-	}
-
 
 	/// move
 	///
@@ -190,8 +195,8 @@ namespace eastl
 	///         return result;
 	///     }
 
-	template <typename InputIterator, typename OutputIterator>
-	inline OutputIterator move(InputIterator first, InputIterator last, OutputIterator result)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator> move(InputIterator first, InputSentinel last, OutputIterator result)
 	{
 		return eastl::move_and_copy_chooser<true>(first, last, result);
 	}
@@ -211,8 +216,8 @@ namespace eastl
 	///
 	/// Complexity: Exactly 'last - first' assignments.
 	///
-	template <typename InputIterator, typename OutputIterator>
-	inline OutputIterator copy(InputIterator first, InputIterator last, OutputIterator result)
+	template <typename InputIterator, typename InputSentinel = InputIterator, typename OutputIterator>
+	EA_CONSTEXPR inline ranges::detail::in_out_result<InputIterator, OutputIterator> copy(InputIterator first, InputSentinel last, OutputIterator result)
 	{
 		return eastl::move_and_copy_chooser<false>(first, last, result);
 	}
