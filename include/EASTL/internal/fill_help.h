@@ -24,36 +24,41 @@ namespace eastl
 	// We implement some fill helper functions in order to allow us to optimize it
 	// where possible.
 	//
-	template <bool bIsScalar>
-	struct fill_imp
+	namespace detail
 	{
-		template <typename ForwardIterator, typename T>
-		static void do_fill(ForwardIterator first, ForwardIterator last, const T& value)
+		template <bool bIsScalar>
+		struct fill_imp
 		{
-			// The C++ standard doesn't specify whether we need to create a temporary
-			// or not, but all std STL implementations are written like what we have here.
-			for(; first != last; ++first)
-				*first = value;
-		}
-	};
-
-	template <>
-	struct fill_imp<true>
-	{
-		template <typename ForwardIterator, typename T>
-		static void do_fill(ForwardIterator first, ForwardIterator last, const T& value)
-		{
-			typedef typename eastl::iterator_traits<ForwardIterator>::value_type value_type;
-			// We create a temp and fill from that because value might alias to the 
-			// destination range and so the compiler would be forced into generating 
-			// less efficient code.
-			for(const T temp = value; first != last; ++first)
+			template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename T>
+			EA_CONSTEXPR static ForwardIterator do_fill(ForwardIterator first, ForwardSentinel last, const T& value)
 			{
-				EA_UNUSED(temp);
-				*first = static_cast<value_type>(temp);
+				// The C++ standard doesn't specify whether we need to create a temporary
+				// or not, but all std STL implementations are written like what we have here.
+				for (; first != last; ++first)
+					*first = value;
+				return first;
 			}
-		}
-	};
+		};
+
+		template <>
+		struct fill_imp<true>
+		{
+			template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename T>
+			EA_CONSTEXPR static ForwardIterator do_fill(ForwardIterator first, ForwardSentinel last, const T& value)
+			{
+				typedef typename eastl::iterator_traits<ForwardIterator>::value_type value_type;
+				// We create a temp and fill from that because value might alias to the
+				// destination range and so the compiler would be forced into generating
+				// less efficient code.
+				for (const T temp = value; first != last; ++first)
+				{
+					EA_UNUSED(temp);
+					*first = static_cast<value_type>(temp);
+				}
+				return first;
+			}
+		};
+	}	
 
 	/// fill
 	///
@@ -71,10 +76,10 @@ namespace eastl
 	/// coming from within the first-last range. All std STL implementations act
 	/// as if the standard specifies that value must not come from within this range.
 	///
-	template <typename ForwardIterator, typename T>
-	inline void fill(ForwardIterator first, ForwardIterator last, const T& value)
+	template <typename ForwardIterator, typename ForwardSentinel = ForwardIterator, typename T>
+	EA_CONSTEXPR inline ForwardIterator fill(ForwardIterator first, ForwardSentinel last, const T& value)
 	{
-		eastl::fill_imp< is_scalar<T>::value >::do_fill(first, last, value);
+		return eastl::detail::fill_imp< eastl::is_scalar<T>::value >::do_fill(first, last, value);
 
 		// Possibly better implementation, as it will deal with small PODs as well as scalars:
 		// bEasyCopy is true if the type has a trivial constructor (e.g. is a POD) and if 
@@ -88,7 +93,7 @@ namespace eastl
 	#if (defined(EA_COMPILER_GNUC) || defined(__clang__)) && (defined(EA_PROCESSOR_X86) || defined(EA_PROCESSOR_X86_64))
 		#if defined(EA_PROCESSOR_X86_64)
 			template <typename Value>
-			inline void fill(uint64_t* first, uint64_t* last, Value c)
+			inline uint64_t* fill(uint64_t* first, uint64_t* last, Value c)
 			{
 				uintptr_t count = (uintptr_t)(last - first);
 				uint64_t  value = (uint64_t)(c);
@@ -98,11 +103,12 @@ namespace eastl
 									   : "+c" (count), "+D" (first), "=m" (first)
 									   : "a" (value)
 									   : "cc" );
+		        return first + count;
 			}
 
 
 			template <typename Value>
-			inline void fill(int64_t* first, int64_t* last, Value c)
+			inline int64_t* fill(int64_t* first, int64_t* last, Value c)
 			{
 				uintptr_t count = (uintptr_t)(last - first);
 				int64_t   value = (int64_t)(c);
@@ -112,11 +118,12 @@ namespace eastl
 									   : "+c" (count), "+D" (first), "=m" (first)
 									   : "a" (value)
 									   : "cc" );
+		        return first + count;
 			}
 		#endif
 
 		template <typename Value>
-		inline void fill(uint32_t* first, uint32_t* last, Value c)
+		inline uint32_t* fill(uint32_t* first, uint32_t* last, Value c)
 		{
 			uintptr_t count = (uintptr_t)(last - first);
 			uint32_t  value = (uint32_t)(c);
@@ -126,11 +133,12 @@ namespace eastl
 								   : "+c" (count), "+D" (first), "=m" (first)
 								   : "a" (value)
 								   : "cc" );
+		    return first + count;
 		}
 
 
 		template <typename Value>
-		inline void fill(int32_t* first, int32_t* last, Value c)
+		inline int32_t* fill(int32_t* first, int32_t* last, Value c)
 		{
 			uintptr_t count = (uintptr_t)(last - first);
 			int32_t   value = (int32_t)(c);
@@ -140,11 +148,12 @@ namespace eastl
 								   : "+c" (count), "+D" (first), "=m" (first)
 								   : "a" (value)
 								   : "cc" );
+		    return first + count;
 		}
 
 
 		template <typename Value>
-		inline void fill(uint16_t* first, uint16_t* last, Value c)
+		inline uint16_t* fill(uint16_t* first, uint16_t* last, Value c)
 		{
 			uintptr_t count = (uintptr_t)(last - first);
 			uint16_t  value = (uint16_t)(c);
@@ -154,11 +163,12 @@ namespace eastl
 								   : "+c" (count), "+D" (first), "=m" (first)
 								   : "a" (value)
 								   : "cc" );
+		    return first + count;
 		}
 
 
 		template <typename Value>
-		inline void fill(int16_t* first, int16_t* last, Value c)
+		inline int16_t* fill(int16_t* first, int16_t* last, Value c)
 		{
 			uintptr_t count = (uintptr_t)(last - first);
 			int16_t   value = (int16_t)(c);
@@ -168,83 +178,97 @@ namespace eastl
 								   : "+c" (count), "+D" (first), "=m" (first)
 								   : "a" (value)
 								   : "cc" );
+		    return first + count;
 		}
 
 	#elif defined(EA_COMPILER_MICROSOFT) && (defined(EA_PROCESSOR_X86) || defined(EA_PROCESSOR_X86_64))
 		#if defined(EA_PROCESSOR_X86_64)
 			template <typename Value>
-			inline void fill(uint64_t* first, uint64_t* last, Value c)
+			inline uint64_t* fill(uint64_t* first, uint64_t* last, Value c)
 			{
 				__stosq(first, (uint64_t)c, (size_t)(last - first));
+		        return first + (size_t)(last - first);
 			}
 
 			template <typename Value>
-			inline void fill(int64_t* first, int64_t* last, Value c)
+			inline int64_t* fill(int64_t* first, int64_t* last, Value c)
 			{
 				__stosq((uint64_t*)first, (uint64_t)c, (size_t)(last - first));
+		        return first + (size_t)(last - first);
 			}
 		#endif
 
 		template <typename Value>
-		inline void fill(uint32_t* first, uint32_t* last, Value c)
+		inline uint32_t fill(uint32_t* first, uint32_t* last, Value c)
 		{
 			__stosd((unsigned long*)first, (unsigned long)c, (size_t)(last - first));
+		    return first + (size_t)(last - first);
 		}
 
 		template <typename Value>
-		inline void fill(int32_t* first, int32_t* last, Value c)
+		inline int32_t* fill(int32_t* first, int32_t* last, Value c)
 		{
 			__stosd((unsigned long*)first, (unsigned long)c, (size_t)(last - first));
+		    return first + (size_t)(last - first);
 		}
 
 		template <typename Value>
-		inline void fill(uint16_t* first, uint16_t* last, Value c)
+		inline uint16_t* fill(uint16_t* first, uint16_t* last, Value c)
 		{
 			__stosw(first, (uint16_t)c, (size_t)(last - first));
+		    return first + (size_t)(last - first);
 		}
 
 		template <typename Value>
-		inline void fill(int16_t* first, int16_t* last, Value c)
+		inline int16_t fill(int16_t* first, int16_t* last, Value c)
 		{
 			__stosw((uint16_t*)first, (uint16_t)c, (size_t)(last - first));
+		    return first + (size_t)(last - first);
 		}
 	#endif
 
 
-	inline void fill(char* first, char* last, const char& c) // It's debateable whether we should use 'char& c' or 'char c' here.
+	inline char* fill(char* first, char* last, const char& c) // It's debateable whether we should use 'char& c' or 'char c' here.
 	{
 		memset(first, (unsigned char)c, (size_t)(last - first));
+		return first + (size_t)(last - first);
 	}
 
-	inline void fill(char* first, char* last, const int c) // This is used for cases like 'fill(first, last, 0)'.
+	inline char* fill(char* first, char* last, const int c) // This is used for cases like 'fill(first, last, 0)'.
 	{
 		memset(first, (unsigned char)c, (size_t)(last - first));
+		return first + (size_t)(last - first);
 	}
 
-	inline void fill(unsigned char* first, unsigned char* last, const unsigned char& c)
+	inline unsigned char* fill(unsigned char* first, unsigned char* last, const unsigned char& c)
 	{
 		memset(first, (unsigned char)c, (size_t)(last - first));
+		return first + (size_t)(last - first);
 	}
 
-	inline void fill(unsigned char* first, unsigned char* last, const int c)
+	inline unsigned char* fill(unsigned char* first, unsigned char* last, const int c)
 	{
 		memset(first, (unsigned char)c, (size_t)(last - first));
+		return first + (size_t)(last - first);
 	}
 
-	inline void fill(signed char* first, signed char* last, const signed char& c)
+	inline signed char* fill(signed char* first, signed char* last, const signed char& c)
 	{
 		memset(first, (unsigned char)c, (size_t)(last - first));
+		return first + (size_t)(last - first);
 	}
 
-	inline void fill(signed char* first, signed char* last, const int c)
+	inline signed char* fill(signed char* first, signed char* last, const int c)
 	{
 		memset(first, (unsigned char)c, (size_t)(last - first));
+		return first + (size_t)(last - first);
 	}
 
 	#if defined(_MSC_VER) || defined(__BORLANDC__) || defined(__ICL) // ICL = Intel compiler
-		inline void fill(bool* first, bool* last, const bool& b)
+		inline bool* fill(bool* first, bool* last, const bool& b)
 		{
 			memset(first, (char)b, (size_t)(last - first));
+		    return first + (size_t)(last - first);
 		}
 	#endif
 
@@ -253,14 +277,13 @@ namespace eastl
 
 	// fill_n
 	//
-	// We implement some fill helper functions in order to allow us to optimize it
-	// where possible.
+	// We implement some fill helper functions in order to allow us to optimize it where possible.
 	//
 	template <bool bIsScalar>
 	struct fill_n_imp
 	{
 		template <typename OutputIterator, typename Size, typename T>
-		static OutputIterator do_fill(OutputIterator first, Size n, const T& value)
+		EA_CONSTEXPR static OutputIterator do_fill(OutputIterator first, Size n, const T& value)
 		{
 			for(; n-- > 0; ++first)
 				*first = value;
@@ -272,7 +295,7 @@ namespace eastl
 	struct fill_n_imp<true>
 	{
 		template <typename OutputIterator, typename Size, typename T>
-		static OutputIterator do_fill(OutputIterator first, Size n, const T& value)
+		EA_CONSTEXPR static OutputIterator do_fill(OutputIterator first, Size n, const T& value)
 		{
 			typedef typename eastl::iterator_traits<OutputIterator>::value_type value_type;
 
@@ -296,9 +319,9 @@ namespace eastl
 	/// Complexity: Exactly n assignments.
 	///
 	template <typename OutputIterator, typename Size, typename T>
-	OutputIterator fill_n(OutputIterator first, Size n, const T& value)
+	EA_CONSTEXPR OutputIterator fill_n(OutputIterator first, Size n, const T& value)
 	{
-		return eastl::fill_n_imp<is_scalar<T>::value>::do_fill(first, n, value);
+		return eastl::fill_n_imp<eastl::is_scalar<T>::value>::do_fill(first, n, value);
 	}
 
 	template <typename Size>
